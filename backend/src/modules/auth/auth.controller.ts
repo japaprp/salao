@@ -1,12 +1,15 @@
 import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterAdminDto } from './dto/register-admin.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
@@ -22,6 +25,7 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 15 * 60 * 1000 } })
   @ApiOperation({ summary: 'Login de usuário' })
   @ApiResponse({ status: 200, description: 'Login realizado com sucesso' })
   @ApiResponse({ status: 401, description: 'Credenciais inválidas' })
@@ -32,6 +36,7 @@ export class AuthController {
   }
 
   @Post('register')
+  @Throttle({ default: { limit: 3, ttl: 15 * 60 * 1000 } })
   @ApiOperation({ summary: 'Registro público de cliente' })
   @ApiResponse({ status: 201, description: 'Usuário registrado com sucesso' })
   @ApiResponse({ status: 409, description: 'Email já cadastrado' })
@@ -40,6 +45,7 @@ export class AuthController {
   }
 
   @Post('register/admin')
+  @Throttle({ default: { limit: 2, ttl: 60 * 60 * 1000 } })
   @ApiOperation({ summary: 'Onboarding inicial do salão com conta gestora' })
   @ApiResponse({ status: 201, description: 'Conta gestora criada com sucesso' })
   @ApiResponse({ status: 409, description: 'Email ou organização já cadastrados' })
@@ -52,8 +58,26 @@ export class AuthController {
     return authResponse;
   }
 
+  @Post('forgot-password')
+  @Throttle({ default: { limit: 3, ttl: 15 * 60 * 1000 } })
+  @ApiOperation({ summary: 'Solicitar link de recuperação de senha' })
+  @ApiResponse({ status: 200, description: 'Solicitação recebida sem expor existência do email' })
+  forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 15 * 60 * 1000 } })
+  @ApiOperation({ summary: 'Redefinir senha com link temporário' })
+  @ApiResponse({ status: 200, description: 'Senha atualizada com sucesso' })
+  @ApiResponse({ status: 401, description: 'Link inválido ou expirado' })
+  resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
+  }
+
   @UseGuards(RefreshTokenGuard)
   @Post('refresh')
+  @Throttle({ default: { limit: 20, ttl: 15 * 60 * 1000 } })
   @ApiOperation({ summary: 'Renovar access token com refresh token' })
   @ApiResponse({ status: 200, description: 'Access token renovado com sucesso' })
   @ApiResponse({ status: 401, description: 'Refresh token inválido' })
@@ -62,8 +86,7 @@ export class AuthController {
     @Body() refreshTokenDto: RefreshTokenDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const refreshToken =
-      request.cookies?.[REFRESH_TOKEN_COOKIE_NAME] ?? refreshTokenDto.refreshToken;
+    const refreshToken = this.getRefreshTokenFromRequest(request) ?? refreshTokenDto.refreshToken;
     const authResponse = await this.authService.refresh({ refreshToken });
     this.setRefreshTokenCookie(response, authResponse.refreshToken);
     return authResponse;
@@ -110,5 +133,15 @@ export class AuthController {
       sameSite: 'lax',
       path: REFRESH_TOKEN_COOKIE_PATH,
     });
+  }
+
+  private getRefreshTokenFromRequest(request: Request): string | undefined {
+    const cookies: unknown = request.cookies;
+    if (!cookies || typeof cookies !== 'object') {
+      return undefined;
+    }
+
+    const refreshToken = (cookies as Record<string, unknown>)[REFRESH_TOKEN_COOKIE_NAME];
+    return typeof refreshToken === 'string' ? refreshToken : undefined;
   }
 }

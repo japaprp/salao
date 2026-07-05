@@ -6,9 +6,13 @@ import {
   Professional,
   ProfessionalPerformanceMetric,
   ProfessionalServiceAssignment,
+  Product,
+  ProductInventory,
+  RecurringClientMetric,
   ReportsOverview,
   ReportsSummary,
   Service,
+  TopProductMetric,
   TopServiceMetric,
   User,
   UserRole,
@@ -108,8 +112,8 @@ export const normalizeUser = (value: unknown): User => {
     id: toStringValue(raw.id),
     email: toStringValue(raw.email),
     phone: toNullableStringValue(raw.phone),
-    name: toStringValue(raw.name, 'Usuário do salão'),
-    role: toEnumValue(raw.role, Object.values(UserRole), UserRole.MANAGER),
+    name: toStringValue(raw.name, 'Usuário da barbearia'),
+    role: toEnumValue(raw.role, Object.values(UserRole), UserRole.OWNER),
     tenantId: toStringValue(raw.tenantId),
     createdAt: toIsoDateTimeValue(raw.createdAt),
     updatedAt: toIsoDateTimeValue(raw.updatedAt),
@@ -181,6 +185,46 @@ export const normalizeService = (value: unknown): Service => {
   };
 };
 
+export const normalizeProductInventory = (value: unknown): ProductInventory => {
+  const raw = isRecord(value) ? value : {};
+
+  return {
+    id: toStringValue(raw.id),
+    productId: toStringValue(raw.productId),
+    availableQty: toNumberValue(raw.availableQty),
+    reservedQty: toNumberValue(raw.reservedQty),
+    reorderPoint: toNumberValue(raw.reorderPoint),
+    safetyStock: toNumberValue(raw.safetyStock),
+  };
+};
+
+export const normalizeProduct = (value: unknown): Product => {
+  const raw = isRecord(value) ? value : {};
+
+  return {
+    id: toStringValue(raw.id),
+    tenantId: toStringValue(raw.tenantId),
+    categoryId: toNullableStringValue(raw.categoryId),
+    name: toStringValue(raw.name),
+    slug: toStringValue(raw.slug),
+    sku: toNullableStringValue(raw.sku),
+    description: toNullableStringValue(raw.description),
+    shortDescription: toNullableStringValue(raw.shortDescription),
+    price: toNumberValue(raw.price),
+    compareAtPrice:
+      raw.compareAtPrice == null || raw.compareAtPrice === ''
+        ? null
+        : toNumberValue(raw.compareAtPrice),
+    featured: toBooleanValue(raw.featured),
+    active: toBooleanValue(raw.active, true),
+    shippable: toBooleanValue(raw.shippable, true),
+    trackInventory: toBooleanValue(raw.trackInventory, true),
+    inventory: isRecord(raw.inventory) ? normalizeProductInventory(raw.inventory) : null,
+    createdAt: toIsoDateTimeValue(raw.createdAt),
+    updatedAt: toIsoDateTimeValue(raw.updatedAt),
+  };
+};
+
 export const normalizeClient = (value: unknown): Client => {
   const raw = isRecord(value) ? value : {};
 
@@ -189,7 +233,16 @@ export const normalizeClient = (value: unknown): Client => {
     userId: toStringValue(raw.userId),
     tenantId: toStringValue(raw.tenantId),
     loyaltyPoints: toNumberValue(raw.loyaltyPoints),
+    loyaltyLevel: toNullableStringValue(raw.loyaltyLevel) ?? 'BRONZE',
     lifetimeValue: toNumberValue(raw.lifetimeValue),
+    loyaltyWallet: isRecord(raw.loyaltyWallet)
+      ? {
+          id: toStringValue(raw.loyaltyWallet.id),
+          pointsBalance: toNumberValue(raw.loyaltyWallet.pointsBalance),
+          cashbackBalance: toNumberValue(raw.loyaltyWallet.cashbackBalance),
+          currentLevel: toStringValue(raw.loyaltyWallet.currentLevel || raw.loyaltyLevel),
+        }
+      : null,
     favoriteProfessionalId: toNullableStringValue(raw.favoriteProfessionalId),
     preferences: isRecord(raw.preferences) ? raw.preferences : null,
     createdAt: toIsoDateTimeValue(raw.createdAt),
@@ -247,6 +300,7 @@ export const normalizeReportsSummary = (value: unknown): ReportsSummary => {
     totalRevenue: toNumberValue(raw.totalRevenue),
     monthlyRevenue: toNumberValue(raw.monthlyRevenue),
     averageTicket: toNumberValue(raw.averageTicket),
+    returnRate: toNumberValue(raw.returnRate),
   };
 };
 
@@ -286,6 +340,28 @@ export const normalizeProfessionalPerformanceMetric = (
   };
 };
 
+export const normalizeTopProductMetric = (value: unknown): TopProductMetric => {
+  const raw = isRecord(value) ? value : {};
+
+  return {
+    productId: toStringValue(raw.productId),
+    name: toStringValue(raw.name, 'Produto'),
+    quantity: toNumberValue(raw.quantity),
+    revenue: toNumberValue(raw.revenue),
+  };
+};
+
+export const normalizeRecurringClientMetric = (value: unknown): RecurringClientMetric => {
+  const raw = isRecord(value) ? value : {};
+
+  return {
+    clientId: toStringValue(raw.clientId),
+    name: toStringValue(raw.name, 'Cliente'),
+    appointments: toNumberValue(raw.appointments),
+    revenue: toNumberValue(raw.revenue),
+  };
+};
+
 export const normalizeReportsOverview = (value: unknown): ReportsOverview => {
   const raw = isRecord(value) ? value : {};
 
@@ -301,6 +377,12 @@ export const normalizeReportsOverview = (value: unknown): ReportsOverview => {
       ? raw.professionalPerformance
           .filter(isRecord)
           .map(metric => normalizeProfessionalPerformanceMetric(metric))
+      : [],
+    topProducts: Array.isArray(raw.topProducts)
+      ? raw.topProducts.filter(isRecord).map(metric => normalizeTopProductMetric(metric))
+      : [],
+    recurringClients: Array.isArray(raw.recurringClients)
+      ? raw.recurringClients.filter(isRecord).map(metric => normalizeRecurringClientMetric(metric))
       : [],
     topService: isRecord(raw.topService) ? normalizeTopServiceMetric(raw.topService) : null,
     upcomingAppointments: Array.isArray(raw.upcomingAppointments)

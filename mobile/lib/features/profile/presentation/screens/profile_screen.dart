@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:salao_da_lu_mobile/app/navigation/app_route.dart';
-import 'package:salao_da_lu_mobile/features/profile/application/providers/profile_providers.dart';
-import 'package:salao_da_lu_mobile/features/profile/domain/entities/client_profile.dart';
-import 'package:salao_da_lu_mobile/features/profile/domain/entities/client_profile_appointment.dart';
-import 'package:salao_da_lu_mobile/features/profile/presentation/widgets/loyalty_activity_tile.dart';
-import 'package:salao_da_lu_mobile/features/profile/presentation/widgets/loyalty_overview_card.dart';
-import 'package:salao_da_lu_mobile/features/profile/presentation/widgets/profile_appointment_tile.dart';
-import 'package:salao_da_lu_mobile/features/profile/presentation/widgets/profile_header_card.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/theme/design_tokens.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_feedback_banner.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_gradient_scaffold.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_logo.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_surface_card.dart';
+import 'package:barbearia_do_artur_mobile/app/navigation/app_route.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/application/providers/profile_providers.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/domain/entities/client_profile.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/domain/entities/client_profile_appointment.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/presentation/widgets/loyalty_activity_tile.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/presentation/widgets/loyalty_overview_card.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/presentation/widgets/profile_appointment_tile.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/presentation/widgets/profile_header_card.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/theme/design_tokens.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_feedback_banner.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_gradient_scaffold.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_logo.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_surface_card.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -73,6 +73,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               AppFeedbackBanner(message: state.failureMessage!),
               const SizedBox(height: AppSpacing.md),
             ],
+            if (state.successMessage != null) ...[
+              AppFeedbackBanner(
+                message: state.successMessage!,
+                tone: AppFeedbackTone.success,
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
             if (state.isLoading && profile == null)
               const Center(
                 child: Padding(
@@ -81,7 +88,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               )
             else if (profile != null)
-              _ProfileContent(profile: profile),
+              _ProfileContent(
+                profile: profile,
+                isRedeeming: state.isRedeeming,
+              ),
           ],
         ),
       ),
@@ -89,15 +99,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 }
 
-class _ProfileContent extends StatelessWidget {
+class _ProfileContent extends ConsumerWidget {
   const _ProfileContent({
     required this.profile,
+    required this.isRedeeming,
   });
 
   final ClientProfile profile;
+  final bool isRedeeming;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final nextAppointment = _findNextAppointment(profile.recentAppointments);
 
     return Column(
@@ -105,7 +117,11 @@ class _ProfileContent extends StatelessWidget {
       children: [
         ProfileHeaderCard(profile: profile),
         const SizedBox(height: AppSpacing.md),
-        LoyaltyOverviewCard(profile: profile),
+        LoyaltyOverviewCard(
+          profile: profile,
+          isRedeeming: isRedeeming,
+          onRedeem: () => _showRedeemDialog(context, ref, profile.pointsBalance),
+        ),
         const SizedBox(height: AppSpacing.xl),
         Text(
           'Próxima visita',
@@ -182,5 +198,49 @@ class _ProfileContent extends StatelessWidget {
     upcoming
         .sort((left, right) => left.scheduledAt.compareTo(right.scheduledAt));
     return upcoming.first;
+  }
+
+  Future<void> _showRedeemDialog(
+    BuildContext context,
+    WidgetRef ref,
+    int pointsBalance,
+  ) async {
+    final controller = TextEditingController(text: pointsBalance.toString());
+    final points = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Resgatar pontos'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Pontos',
+              helperText: 'Saldo disponivel: $pointsBalance pts',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text.trim());
+                Navigator.of(dialogContext).pop(value);
+              },
+              child: const Text('Confirmar'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+
+    if (points == null || points <= 0) {
+      return;
+    }
+
+    await ref.read(profileControllerProvider.notifier).redeemPoints(points);
   }
 }

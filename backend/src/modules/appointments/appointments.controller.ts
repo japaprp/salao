@@ -10,12 +10,17 @@ import {
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { CreateSelfAppointmentDto } from './dto/create-self-appointment.dto';
+import { CreateTimeOffDto } from './dto/create-time-off.dto';
 import { GetAvailableSlotsDto } from './dto/get-available-slots.dto';
+import { MessageClientDto } from './dto/message-client.dto';
+import { OfferEarlierSlotDto } from './dto/offer-earlier-slot.dto';
+import { RescheduleSelfAppointmentDto } from './dto/reschedule-self-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles, STAFF_ROLES } from '../auth/guards/roles.guard';
 import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 
 @ApiTags('appointments')
@@ -26,6 +31,7 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Post()
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Criar novo agendamento' })
   @ApiResponse({ status: 201, description: 'Agendamento criado com sucesso' })
   @ApiResponse({ status: 400, description: 'Dados inválidos ou conflito de horário' })
@@ -40,6 +46,7 @@ export class AppointmentsController {
   }
 
   @Get()
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Listar todos os agendamentos com paginação' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Deslocamento (padrão: 0)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Limite por página (padrão: 20, máximo: 100)' })
@@ -83,6 +90,7 @@ export class AppointmentsController {
   }
 
   @Get('professional/:professionalId')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Buscar agendamentos por profissional e período' })
   @ApiParam({ name: 'professionalId', description: 'ID do profissional' })
   @ApiQuery({ name: 'startDate', description: 'Data inicial (YYYY-MM-DD)' })
@@ -103,6 +111,7 @@ export class AppointmentsController {
   }
 
   @Get('client/:clientId')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Buscar agendamentos por cliente com paginação' })
   @ApiParam({ name: 'clientId', description: 'ID do cliente' })
   @ApiQuery({ name: 'offset', required: false, type: Number, description: 'Deslocamento (padrão: 0)' })
@@ -120,7 +129,33 @@ export class AppointmentsController {
     );
   }
 
+  @Post('time-offs')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Criar bloqueio ou folga na agenda' })
+  @ApiResponse({ status: 201, description: 'Bloqueio criado com sucesso' })
+  createTimeOff(@Body() createTimeOffDto: CreateTimeOffDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.appointmentsService.createTimeOff(user.tenantId, createTimeOffDto);
+  }
+
+  @Get('time-offs')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Listar bloqueios e folgas da agenda' })
+  @ApiResponse({ status: 200, description: 'Bloqueios retornados com sucesso' })
+  findTimeOffs(@CurrentUser() user: AuthenticatedUser) {
+    return this.appointmentsService.findTimeOffsByTenant(user.tenantId);
+  }
+
+  @Delete('time-offs/:id')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Remover bloqueio ou folga da agenda' })
+  @ApiParam({ name: 'id', description: 'ID do bloqueio' })
+  @ApiResponse({ status: 200, description: 'Bloqueio removido com sucesso' })
+  removeTimeOff(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.appointmentsService.removeTimeOff(id, user.tenantId);
+  }
+
   @Get(':id')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Buscar agendamento por ID' })
   @ApiParam({ name: 'id', description: 'ID do agendamento' })
   @ApiResponse({ status: 200, description: 'Agendamento encontrado' })
@@ -130,6 +165,7 @@ export class AppointmentsController {
   }
 
   @Put(':id')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Atualizar agendamento' })
   @ApiParam({ name: 'id', description: 'ID do agendamento' })
   @ApiResponse({ status: 200, description: 'Agendamento atualizado com sucesso' })
@@ -143,6 +179,7 @@ export class AppointmentsController {
   }
 
   @Put(':id/status')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Atualizar status do agendamento' })
   @ApiParam({ name: 'id', description: 'ID do agendamento' })
   @ApiResponse({ status: 200, description: 'Status atualizado com sucesso' })
@@ -158,7 +195,79 @@ export class AppointmentsController {
     );
   }
 
+  @Put('mine/:id/reschedule')
+  @ApiOperation({ summary: 'Reagendar atendimento do cliente autenticado' })
+  @ApiParam({ name: 'id', description: 'ID do agendamento' })
+  @ApiResponse({ status: 200, description: 'Agendamento reagendado com sucesso' })
+  @ApiResponse({ status: 403, description: 'Agendamento não pertence ao cliente autenticado' })
+  rescheduleMine(
+    @Param('id') id: string,
+    @Body() rescheduleDto: RescheduleSelfAppointmentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.appointmentsService.rescheduleMine(
+      user.userId,
+      user.tenantId,
+      id,
+      rescheduleDto,
+    );
+  }
+
+  @Post('mine/:id/cancel')
+  @ApiOperation({ summary: 'Cancelar atendimento do cliente autenticado com política de taxa' })
+  @ApiParam({ name: 'id', description: 'ID do agendamento' })
+  @ApiResponse({ status: 200, description: 'Agendamento cancelado com política aplicada' })
+  @ApiResponse({ status: 403, description: 'Agendamento não pertence ao cliente autenticado' })
+  cancelMine(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.appointmentsService.cancelMine(user.userId, user.tenantId, id);
+  }
+
+  @Post(':id/confirm')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Confirmar agendamento pelo Artur' })
+  @ApiParam({ name: 'id', description: 'ID do agendamento' })
+  @ApiResponse({ status: 200, description: 'Agendamento confirmado com nota operacional' })
+  confirm(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.appointmentsService.confirmByOwner(id, user.tenantId);
+  }
+
+  @Post(':id/message-client')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Preparar mensagem rápida para o cliente' })
+  @ApiParam({ name: 'id', description: 'ID do agendamento' })
+  @ApiResponse({ status: 200, description: 'Mensagem preparada com contexto do agendamento' })
+  messageClient(
+    @Param('id') id: string,
+    @Body() messageClientDto: MessageClientDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.appointmentsService.messageClient(id, user.tenantId, messageClientDto);
+  }
+
+  @Post(':id/offer-earlier-slot')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Oferecer horário vago mais cedo ao cliente' })
+  @ApiParam({ name: 'id', description: 'ID do agendamento' })
+  @ApiResponse({ status: 200, description: 'Mensagem de antecipação preparada' })
+  offerEarlierSlot(
+    @Param('id') id: string,
+    @Body() offerEarlierSlotDto: OfferEarlierSlotDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.appointmentsService.offerEarlierSlot(id, user.tenantId, offerEarlierSlotDto);
+  }
+
+  @Post(':id/cancel-with-policy')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Cancelar aplicando política de taxa de 1 hora' })
+  @ApiParam({ name: 'id', description: 'ID do agendamento' })
+  @ApiResponse({ status: 200, description: 'Agendamento cancelado com cálculo de taxa' })
+  cancelWithPolicy(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.appointmentsService.cancelWithPolicy(id, user.tenantId);
+  }
+
   @Post(':id/checkin')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Fazer check-in do agendamento' })
   @ApiParam({ name: 'id', description: 'ID do agendamento' })
   @ApiResponse({ status: 200, description: 'Check-in realizado com sucesso' })
@@ -167,6 +276,7 @@ export class AppointmentsController {
   }
 
   @Post(':id/start')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Iniciar atendimento' })
   @ApiParam({ name: 'id', description: 'ID do agendamento' })
   @ApiResponse({ status: 200, description: 'Atendimento iniciado com sucesso' })
@@ -175,6 +285,7 @@ export class AppointmentsController {
   }
 
   @Post(':id/complete')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Completar atendimento' })
   @ApiParam({ name: 'id', description: 'ID do agendamento' })
   @ApiResponse({ status: 200, description: 'Atendimento completado com sucesso' })
@@ -183,6 +294,7 @@ export class AppointmentsController {
   }
 
   @Delete(':id')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: 'Cancelar agendamento' })
   @ApiParam({ name: 'id', description: 'ID do agendamento' })
   @ApiResponse({ status: 200, description: 'Agendamento cancelado com sucesso' })

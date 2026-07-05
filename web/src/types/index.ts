@@ -39,7 +39,14 @@ export interface Client {
   userId: string;
   tenantId: string;
   loyaltyPoints: number;
+  loyaltyLevel?: string;
   lifetimeValue: number;
+  loyaltyWallet?: {
+    id: string;
+    pointsBalance: number;
+    cashbackBalance: number;
+    currentLevel: string;
+  } | null;
   favoriteProfessionalId?: string | null;
   preferences?: Record<string, unknown> | null;
   createdAt: IsoDateTimeString;
@@ -61,6 +68,66 @@ export interface Service {
   active: boolean;
   createdAt: IsoDateTimeString;
   updatedAt: IsoDateTimeString;
+}
+
+export interface ProductInventory {
+  id: string;
+  productId: string;
+  availableQty: number;
+  reservedQty: number;
+  reorderPoint: number;
+  safetyStock: number;
+}
+
+export interface Product {
+  id: string;
+  tenantId: string;
+  categoryId?: string | null;
+  name: string;
+  slug: string;
+  sku?: string | null;
+  description?: string | null;
+  shortDescription?: string | null;
+  price: number;
+  compareAtPrice?: number | null;
+  featured: boolean;
+  active: boolean;
+  shippable: boolean;
+  trackInventory: boolean;
+  inventory?: ProductInventory | null;
+  createdAt: IsoDateTimeString;
+  updatedAt: IsoDateTimeString;
+}
+
+export interface StoreOrderItem {
+  id: string;
+  productName: string;
+  sku?: string | null;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+}
+
+export interface StorePayment {
+  id: string;
+  provider: string;
+  method: string;
+  status: string;
+  amount: number;
+}
+
+export interface StoreOrder {
+  id: string;
+  number: string;
+  status: string;
+  totalAmount: number;
+  subtotalAmount: number;
+  deliveryMethod: string;
+  placedAt?: IsoDateTimeString | null;
+  createdAt: IsoDateTimeString;
+  client?: Client | null;
+  items: StoreOrderItem[];
+  payments: StorePayment[];
 }
 
 export interface ProfessionalServiceAssignment {
@@ -100,7 +167,29 @@ export interface Appointment {
   service?: Service;
 }
 
+export interface TimeOff {
+  id: string;
+  tenantId: string;
+  professionalId?: string | null;
+  title: string;
+  reason?: string | null;
+  startAt: IsoDateTimeString;
+  endAt: IsoDateTimeString;
+  createdAt: IsoDateTimeString;
+  updatedAt: IsoDateTimeString;
+  professional?: Professional | null;
+}
+
+export interface CreateTimeOffDto {
+  professionalId?: string;
+  title: string;
+  reason?: string;
+  startAt: IsoDateTimeString;
+  endAt: IsoDateTimeString;
+}
+
 export enum UserRole {
+  OWNER = 'OWNER',
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
   PROFESSIONAL = 'PROFESSIONAL',
@@ -117,7 +206,6 @@ export enum AppointmentStatus {
 }
 
 export interface LoginForm {
-  tenantSubdomain: string;
   email: string;
   password: string;
 }
@@ -193,6 +281,7 @@ export interface ReportsSummary {
   totalRevenue: number;
   monthlyRevenue: number;
   averageTicket: number;
+  returnRate: number;
 }
 
 export interface MonthlyMetricPoint {
@@ -217,13 +306,63 @@ export interface ProfessionalPerformanceMetric {
   revenue: number;
 }
 
+export interface TopProductMetric {
+  productId: string;
+  name: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface RecurringClientMetric {
+  clientId: string;
+  name: string;
+  appointments: number;
+  revenue: number;
+}
+
 export interface ReportsOverview {
   summary: ReportsSummary;
   monthlyData: MonthlyMetricPoint[];
   topServices: TopServiceMetric[];
   professionalPerformance: ProfessionalPerformanceMetric[];
+  topProducts: TopProductMetric[];
+  recurringClients: RecurringClientMetric[];
   topService: TopServiceMetric | null;
   upcomingAppointments: Appointment[];
+}
+
+export interface FinanceTransaction {
+  id: string;
+  type: string;
+  category: string;
+  amount: number;
+  status: string;
+  description?: string | null;
+  recordedAt: IsoDateTimeString;
+}
+
+export interface FinanceOverview {
+  period: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  range: {
+    start: IsoDateTimeString;
+    end: IsoDateTimeString;
+  };
+  summary: {
+    revenue: number;
+    appointmentRevenue: number;
+    orderRevenue: number;
+    manualIncome: number;
+    expenses: number;
+    commissions: number;
+    netProfit: number;
+    appointmentCount: number;
+    orderCount: number;
+    expenseCount: number;
+    commissionCount: number;
+    pendingCommissionAmount: number;
+    pendingCommissionCount: number;
+  };
+  recentTransactions: FinanceTransaction[];
 }
 
 export interface PaginationParams {

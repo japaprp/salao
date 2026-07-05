@@ -1,5 +1,5 @@
 {
-  "name": "salao-da-lu-web",
+  "name": "barbearia-do-artur-web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,8 +7,10 @@
     "build": "next build",
     "start": "next start -p 3001",
     "start:standalone": "node .next/standalone/server.js",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix",
+    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.{ts,tsx}\"",
+    "lint:fix": "eslint --fix --no-error-on-unmatched-pattern \"src/**/*.{ts,tsx}\"",
+    "test": "jest --runInBand",
+    "test:cov": "jest --coverage --runInBand",
     "type-check": "tsc --noEmit",
     "analyze": "ANALYZE=true next build"
   },
@@ -23,18 +25,28 @@
     "@tanstack/react-query-devtools": "^4.44.0",
     "axios": "^1.4.0",
     "date-fns": "^2.30.0",
-    "next": "13.4.0",
+    "next": "16.2.9",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.45.0",
     "yup": "^1.2.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "eslint": "^8.40.0",
-    "eslint-config-next": "^13.4.0",
+    "eslint": "9.39.2",
+    "eslint-config-next": "16.2.9",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
     "typescript": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "@next/swc-win32-arm64-msvc": "16.2.9",
+    "@next/swc-win32-x64-msvc": "16.2.9"
   }
 }

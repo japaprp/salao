@@ -1,12 +1,12 @@
 import 'package:dio/dio.dart';
-import 'package:salao_da_lu_mobile/core/errors/app_exception.dart';
-import 'package:salao_da_lu_mobile/core/errors/failure.dart';
-import 'package:salao_da_lu_mobile/core/result/result.dart';
-import 'package:salao_da_lu_mobile/features/auth/domain/entities/auth_session.dart';
-import 'package:salao_da_lu_mobile/features/auth/domain/entities/register_command.dart';
-import 'package:salao_da_lu_mobile/features/auth/domain/repositories/auth_repository.dart';
-import 'package:salao_da_lu_mobile/features/auth/infrastructure/datasources/auth_local_data_source.dart';
-import 'package:salao_da_lu_mobile/features/auth/infrastructure/datasources/auth_remote_data_source.dart';
+import 'package:barbearia_do_artur_mobile/core/errors/app_exception.dart';
+import 'package:barbearia_do_artur_mobile/core/errors/failure.dart';
+import 'package:barbearia_do_artur_mobile/core/result/result.dart';
+import 'package:barbearia_do_artur_mobile/features/auth/domain/entities/auth_session.dart';
+import 'package:barbearia_do_artur_mobile/features/auth/domain/entities/register_command.dart';
+import 'package:barbearia_do_artur_mobile/features/auth/domain/repositories/auth_repository.dart';
+import 'package:barbearia_do_artur_mobile/features/auth/infrastructure/datasources/auth_local_data_source.dart';
+import 'package:barbearia_do_artur_mobile/features/auth/infrastructure/datasources/auth_remote_data_source.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   const AuthRepositoryImpl({
@@ -19,9 +19,9 @@ class AuthRepositoryImpl implements AuthRepository {
   final AuthLocalDataSource _localDataSource;
 
   @override
-  Result<AuthSession?> restoreSession() {
+  Future<Result<AuthSession?>> restoreSession() async {
     try {
-      final session = _localDataSource.readSession();
+      final session = await _localDataSource.readSession();
       return Success(session?.toEntity());
     } catch (error) {
       return const FailureResult(
@@ -61,8 +61,24 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Result<void>> forgotPassword({
+    required String tenantSubdomain,
+    required String email,
+  }) async {
+    try {
+      await _remoteDataSource.forgotPassword(
+        tenantSubdomain: tenantSubdomain,
+        email: email,
+      );
+      return const Success(null);
+    } catch (error) {
+      return FailureResult(_mapFailure(error));
+    }
+  }
+
+  @override
   Future<void> signOut() async {
-    final session = _localDataSource.readSession();
+    final session = await _localDataSource.readSession();
 
     try {
       if (session != null) {

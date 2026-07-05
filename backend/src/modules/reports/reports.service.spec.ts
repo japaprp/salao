@@ -1,6 +1,41 @@
 import { AppointmentStatus } from '@prisma/client';
 import { ReportsService } from './reports.service';
 
+type AppointmentWhereMock = {
+  status?: AppointmentStatus | { in?: AppointmentStatus[] };
+  scheduledAt?: unknown;
+};
+
+type ClientWhereMock = {
+  createdAt?: unknown;
+};
+
+type AppointmentIncludeMock = {
+  client?: unknown;
+};
+
+type AppointmentSelectMock = {
+  scheduledAt?: unknown;
+};
+
+type AppointmentCountArgsMock = {
+  where: AppointmentWhereMock;
+};
+
+type AppointmentFindManyArgsMock = {
+  where: AppointmentWhereMock;
+  include?: AppointmentIncludeMock;
+  select?: AppointmentSelectMock;
+};
+
+type ClientCountArgsMock = {
+  where: ClientWhereMock;
+};
+
+function hasStatusIn(status: AppointmentWhereMock['status']): status is { in?: AppointmentStatus[] } {
+  return Boolean(status && typeof status === 'object' && 'in' in status);
+}
+
 describe('ReportsService', () => {
   const transaction = {
     appointment: {
@@ -10,6 +45,9 @@ describe('ReportsService', () => {
     },
     client: {
       count: jest.fn(),
+    },
+    orderItem: {
+      findMany: jest.fn(),
     },
   };
 
@@ -26,8 +64,8 @@ describe('ReportsService', () => {
     jest.setSystemTime(new Date('2026-04-18T12:00:00.000Z'));
     jest.clearAllMocks();
 
-    transaction.appointment.count.mockImplementation(({ where }: { where: any }) => {
-      if (Array.isArray(where.status?.in)) {
+    transaction.appointment.count.mockImplementation(({ where }: AppointmentCountArgsMock) => {
+      if (hasStatusIn(where.status) && Array.isArray(where.status.in)) {
         return Promise.resolve(3);
       }
 
@@ -42,8 +80,8 @@ describe('ReportsService', () => {
       return Promise.resolve(0);
     });
 
-    transaction.appointment.aggregate.mockImplementation(({ where }: { where: any }) => {
-      if (Array.isArray(where.status?.in)) {
+    transaction.appointment.aggregate.mockImplementation(({ where }: AppointmentCountArgsMock) => {
+      if (hasStatusIn(where.status) && Array.isArray(where.status.in)) {
         return Promise.resolve({
           _sum: {
             totalAmount: 540,
@@ -74,7 +112,7 @@ describe('ReportsService', () => {
       });
     });
 
-    transaction.client.count.mockImplementation(({ where }: { where: any }) => {
+    transaction.client.count.mockImplementation(({ where }: ClientCountArgsMock) => {
       if (where.createdAt) {
         return Promise.resolve(4);
       }
@@ -82,8 +120,8 @@ describe('ReportsService', () => {
       return Promise.resolve(27);
     });
 
-    transaction.appointment.findMany.mockImplementation(({ where, include, select }: { where: any; include?: any; select?: any }) => {
-      if (include?.client && Array.isArray(where.status?.in)) {
+    transaction.appointment.findMany.mockImplementation(({ where, include, select }: AppointmentFindManyArgsMock) => {
+      if (include?.client && hasStatusIn(where.status) && Array.isArray(where.status.in)) {
         return Promise.resolve([
           {
             id: 'appointment-1',
@@ -118,27 +156,48 @@ describe('ReportsService', () => {
       return Promise.resolve([
         {
           serviceId: 'service-1',
+          clientId: 'client-1',
           totalAmount: 200,
+          client: { user: { name: 'Maria' } },
           service: { name: 'Corte' },
           professionalId: 'professional-1',
           professional: { user: { name: 'Ana' } },
         },
         {
           serviceId: 'service-1',
+          clientId: 'client-1',
           totalAmount: 220,
+          client: { user: { name: 'Maria' } },
           service: { name: 'Corte' },
           professionalId: 'professional-1',
           professional: { user: { name: 'Ana' } },
         },
         {
           serviceId: 'service-2',
+          clientId: 'client-2',
           totalAmount: 180,
+          client: { user: { name: 'Joao' } },
           service: { name: 'Escova' },
           professionalId: 'professional-2',
           professional: { user: { name: 'Clara' } },
         },
       ]);
     });
+
+    transaction.orderItem.findMany.mockResolvedValue([
+      {
+        productId: 'product-1',
+        productName: 'Pomada modeladora',
+        quantity: 3,
+        totalAmount: 150,
+      },
+      {
+        productId: 'product-2',
+        productName: 'Shampoo',
+        quantity: 1,
+        totalAmount: 60,
+      },
+    ]);
 
     service = new ReportsService(prismaService as never);
   });
@@ -161,6 +220,7 @@ describe('ReportsService', () => {
       totalRevenue: 3400,
       monthlyRevenue: 980,
       averageTicket: 196,
+      returnRate: 50,
     });
     expect(result.monthlyData).toEqual([
       { monthKey: '2026-01', label: 'Jan', revenue: 300, appointments: 1 },
@@ -178,6 +238,18 @@ describe('ReportsService', () => {
     expect(result.professionalPerformance[0]).toEqual({
       professionalId: 'professional-1',
       name: 'Ana',
+      appointments: 2,
+      revenue: 420,
+    });
+    expect(result.topProducts[0]).toEqual({
+      productId: 'product-1',
+      name: 'Pomada modeladora',
+      quantity: 3,
+      revenue: 150,
+    });
+    expect(result.recurringClients[0]).toEqual({
+      clientId: 'client-1',
+      name: 'Maria',
       appointments: 2,
       revenue: 420,
     });

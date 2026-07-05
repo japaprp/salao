@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:salao_da_lu_mobile/features/appointments/application/controllers/appointments_controller.dart';
-import 'package:salao_da_lu_mobile/features/appointments/application/providers/appointments_providers.dart';
-import 'package:salao_da_lu_mobile/features/appointments/domain/entities/appointment_professional_option.dart';
-import 'package:salao_da_lu_mobile/features/appointments/domain/entities/appointment_service_option.dart';
-import 'package:salao_da_lu_mobile/features/appointments/domain/entities/appointment_slot_option.dart';
-import 'package:salao_da_lu_mobile/features/appointments/domain/entities/create_client_appointment_command.dart';
-import 'package:salao_da_lu_mobile/features/appointments/presentation/widgets/appointment_booking_summary_card.dart';
-import 'package:salao_da_lu_mobile/features/appointments/presentation/widgets/appointment_slot_chip.dart';
-import 'package:salao_da_lu_mobile/features/appointments/presentation/widgets/client_appointment_card.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/theme/design_tokens.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_feedback_banner.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_gradient_scaffold.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_logo.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_primary_button.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_surface_card.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_text_field.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/application/controllers/appointments_controller.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/application/providers/appointments_providers.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/domain/entities/appointment_professional_option.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/domain/entities/appointment_service_option.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/domain/entities/appointment_slot_option.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/domain/entities/client_appointment.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/domain/entities/create_client_appointment_command.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/presentation/widgets/appointment_booking_summary_card.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/presentation/widgets/appointment_slot_chip.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/presentation/widgets/client_appointment_card.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/theme/design_tokens.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_feedback_banner.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_gradient_scaffold.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_logo.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_primary_button.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_surface_card.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_text_field.dart';
 
 class AppointmentsScreen extends ConsumerStatefulWidget {
   const AppointmentsScreen({super.key});
@@ -55,6 +56,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
       state.selectedServiceId,
     );
     final selectedProfessional = _findSelectedProfessional(state.professionals);
+    final bookingStep = _bookingStep(selectedService);
 
     return AppGradientScaffold(
       body: SingleChildScrollView(
@@ -62,16 +64,16 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const AppLogo(
-              subtitle: 'Agendamento self-service do cliente',
+              subtitle: 'Cliente agenda e Artur confirma',
             ),
             const SizedBox(height: AppSpacing.xl),
             Text(
-              'Agende sem depender de mensagem manual.',
+              'Agende em poucos toques.',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'O cliente escolhe serviço, profissional e um slot realmente livre sobre endpoints protegidos por tenant.',
+              'Escolha serviço, profissional, data e horário. O Artur pode confirmar como está ou ajustar se precisar.',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: AppColors.textMuted,
                   ),
@@ -97,6 +99,8 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: AppSpacing.md),
+                  _BookingStepHeader(currentStep: bookingStep),
+                  const SizedBox(height: AppSpacing.md),
                   if (state.isLoading && state.services.isEmpty)
                     const Center(
                       child: Padding(
@@ -109,7 +113,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                       key: ValueKey(state.selectedServiceId),
                       initialValue: state.selectedServiceId,
                       decoration: const InputDecoration(
-                        labelText: 'Servico',
+                        labelText: 'Serviço',
                       ),
                       items: state.services
                           .map(
@@ -187,7 +191,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     Text(
-                      'Horarios sugeridos',
+                      'Horários sugeridos',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: AppSpacing.sm),
@@ -200,21 +204,21 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                       const AppSurfaceCard(
                         padding: EdgeInsets.all(AppSpacing.md),
                         child: Text(
-                          'Escolha a data para ver os melhores horarios do dia.',
+                          'Escolha a data para ver os melhores horários do dia.',
                         ),
                       )
                     else if (selectedProfessional == null)
                       const AppSurfaceCard(
                         padding: EdgeInsets.all(AppSpacing.md),
                         child: Text(
-                          'Selecione o profissional antes de carregar os horarios.',
+                          'Selecione o profissional antes de carregar os horários.',
                         ),
                       )
                     else if (state.slots.isEmpty)
                       const AppSurfaceCard(
                         padding: EdgeInsets.all(AppSpacing.md),
                         child: Text(
-                          'Nao encontramos janelas livres para essa combinacao. Tente outro dia ou profissional.',
+                          'Não encontramos janelas livres para essa combinação. Tente outro dia ou fale com o Artur para encaixe.',
                         ),
                       )
                     else
@@ -239,8 +243,8 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                     const SizedBox(height: AppSpacing.md),
                     AppTextField(
                       controller: _notesController,
-                      label: 'Observacoes para o salao',
-                      hintText: 'Opcional',
+                      label: 'Observações para o Artur',
+                      hintText: 'Ex: quero ir antes se abrir horário vago',
                     ),
                     const SizedBox(height: AppSpacing.md),
                     AppointmentBookingSummaryCard(
@@ -285,6 +289,14 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                         padding: const EdgeInsets.only(bottom: AppSpacing.md),
                         child: ClientAppointmentCard(
                           appointment: appointment,
+                          onCancel: () => _cancelAppointment(
+                            controller: controller,
+                            appointmentId: appointment.id,
+                          ),
+                          onReschedule: () => _rescheduleAppointment(
+                            controller: controller,
+                            appointment: appointment,
+                          ),
                         ),
                       ),
                     )
@@ -334,6 +346,22 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     AppointmentProfessionalOption? professional,
   ) {
     return service != null && professional != null && _selectedSlot != null;
+  }
+
+  int _bookingStep(AppointmentServiceOption? service) {
+    if (service == null) {
+      return 0;
+    }
+
+    if (_selectedProfessionalId == null) {
+      return 1;
+    }
+
+    if (_selectedDate == null) {
+      return 2;
+    }
+
+    return 3;
   }
 
   Future<void> _submitBooking({
@@ -409,6 +437,121 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
       serviceId: selectedService.id,
       professionalId: _selectedProfessionalId!,
       date: _selectedDate!,
+    );
+  }
+
+  Future<void> _cancelAppointment({
+    required AppointmentsController controller,
+    required String appointmentId,
+  }) async {
+    await controller.cancelAppointment(appointmentId);
+  }
+
+  Future<void> _rescheduleAppointment({
+    required AppointmentsController controller,
+    required ClientAppointment appointment,
+  }) async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: appointment.scheduledAt,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 90)),
+      locale: const Locale('pt', 'BR'),
+    );
+    if (pickedDate == null || !mounted) {
+      return;
+    }
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(appointment.scheduledAt),
+    );
+    if (pickedTime == null) {
+      return;
+    }
+
+    final scheduledAt = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+
+    await controller.rescheduleAppointment(
+      appointmentId: appointment.id,
+      scheduledAt: scheduledAt,
+    );
+  }
+}
+
+class _BookingStepHeader extends StatelessWidget {
+  const _BookingStepHeader({
+    required this.currentStep,
+  });
+
+  final int currentStep;
+
+  static const _labels = ['Serviço', 'Profissional', 'Data', 'Horário'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        for (var index = 0; index < _labels.length; index++)
+          _BookingStepChip(
+            index: index,
+            label: _labels[index],
+            isActive: index == currentStep,
+            isDone: index < currentStep,
+          ),
+      ],
+    );
+  }
+}
+
+class _BookingStepChip extends StatelessWidget {
+  const _BookingStepChip({
+    required this.index,
+    required this.label,
+    required this.isActive,
+    required this.isDone,
+  });
+
+  final int index;
+  final String label;
+  final bool isActive;
+  final bool isDone;
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundColor = isDone
+        ? AppColors.success
+        : isActive
+            ? AppColors.primary
+            : AppColors.surfaceAlt;
+    final foregroundColor =
+        isDone || isActive ? AppColors.surface : AppColors.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: isDone || isActive ? backgroundColor : AppColors.border),
+      ),
+      child: Text(
+        '${index + 1}. $label',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
     );
   }
 }

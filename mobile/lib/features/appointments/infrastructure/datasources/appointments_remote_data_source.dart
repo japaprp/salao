@@ -1,10 +1,10 @@
-import 'package:salao_da_lu_mobile/core/network/api_client.dart';
-import 'package:salao_da_lu_mobile/core/network/api_endpoints.dart';
-import 'package:salao_da_lu_mobile/features/appointments/domain/entities/create_client_appointment_command.dart';
-import 'package:salao_da_lu_mobile/features/appointments/infrastructure/models/appointment_professional_option_model.dart';
-import 'package:salao_da_lu_mobile/features/appointments/infrastructure/models/appointment_service_option_model.dart';
-import 'package:salao_da_lu_mobile/features/appointments/infrastructure/models/appointment_slot_option_model.dart';
-import 'package:salao_da_lu_mobile/features/appointments/infrastructure/models/client_appointment_model.dart';
+import 'package:barbearia_do_artur_mobile/core/network/api_client.dart';
+import 'package:barbearia_do_artur_mobile/core/network/api_endpoints.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/domain/entities/create_client_appointment_command.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/infrastructure/models/appointment_professional_option_model.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/infrastructure/models/appointment_service_option_model.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/infrastructure/models/appointment_slot_option_model.dart';
+import 'package:barbearia_do_artur_mobile/features/appointments/infrastructure/models/client_appointment_model.dart';
 
 class AppointmentsRemoteDataSource {
   const AppointmentsRemoteDataSource(this._apiClient);
@@ -82,6 +82,38 @@ class AppointmentsRemoteDataSource {
         'professionalId': command.professionalId,
         'scheduledAt': command.scheduledAt.toUtc().toIso8601String(),
         'notes': command.notes,
+      },
+    );
+
+    return ClientAppointmentModel.fromJson(response);
+  }
+
+  Future<ClientAppointmentModel> cancelAppointment({
+    required String accessToken,
+    required String appointmentId,
+  }) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.appointmentsMineCancel(appointmentId),
+      accessToken: accessToken,
+    );
+    final appointmentJson =
+        response['appointment'] is Map<String, dynamic>
+            ? response['appointment'] as Map<String, dynamic>
+            : response;
+
+    return ClientAppointmentModel.fromJson(appointmentJson);
+  }
+
+  Future<ClientAppointmentModel> rescheduleAppointment({
+    required String accessToken,
+    required String appointmentId,
+    required DateTime scheduledAt,
+  }) async {
+    final response = await _apiClient.put(
+      ApiEndpoints.appointmentsMineReschedule(appointmentId),
+      accessToken: accessToken,
+      data: {
+        'scheduledAt': scheduledAt.toUtc().toIso8601String(),
       },
     );
 

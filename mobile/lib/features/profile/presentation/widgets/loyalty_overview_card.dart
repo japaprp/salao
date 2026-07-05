@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:salao_da_lu_mobile/features/profile/domain/entities/client_profile.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/theme/design_tokens.dart';
-import 'package:salao_da_lu_mobile/shared/design_system/widgets/app_surface_card.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/domain/entities/client_profile.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/theme/design_tokens.dart';
+import 'package:barbearia_do_artur_mobile/shared/design_system/widgets/app_surface_card.dart';
 
 class LoyaltyOverviewCard extends StatelessWidget {
   const LoyaltyOverviewCard({
     super.key,
     required this.profile,
+    required this.isRedeeming,
+    required this.onRedeem,
   });
 
   final ClientProfile profile;
+  final bool isRedeeming;
+  final VoidCallback onRedeem;
 
   @override
   Widget build(BuildContext context) {
@@ -28,8 +32,17 @@ class LoyaltyOverviewCard extends StatelessWidget {
             runSpacing: AppSpacing.md,
             children: [
               _MetricBox(
+                label: 'Nivel atual',
+                value: profile.loyaltyLevel,
+              ),
+              _MetricBox(
                 label: 'Saldo em carteira',
                 value: '${profile.pointsBalance} pts',
+              ),
+              _MetricBox(
+                label: 'Cashback',
+                value: NumberFormat.currency(symbol: 'R\$ ')
+                    .format(profile.cashbackBalance),
               ),
               _MetricBox(
                 label: 'Pontos acumulados',
@@ -41,6 +54,24 @@ class LoyaltyOverviewCard extends StatelessWidget {
                     .format(profile.lifetimeValue),
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  profile.pointsBalance > 0 && !isRedeeming ? onRedeem : null,
+              icon: isRedeeming
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.redeem_rounded),
+              label: Text(
+                isRedeeming ? 'Registrando resgate...' : 'Resgatar pontos',
+              ),
+            ),
           ),
         ],
       ),

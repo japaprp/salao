@@ -1,0 +1,296 @@
+# EXECUCAO DO ROADMAP - BARBEARIA DO ARTUR
+
+Fonte oficial: `ROADMAP_OFICIAL.md`
+
+Regra operacional: nenhuma funcionalidade nova deve ser iniciada antes da conclusao e validacao da fase anterior.
+
+## Status por fase
+
+| Fase | Nome | Status |
+| --- | --- | --- |
+| 1 | Auditoria e Limpeza | Validada |
+| 2 | Seguranca | Validada |
+| 3 | Agendamento Completo | Validada |
+| 4 | Notificacoes | Codigo pronto; aguardando Firebase real |
+| 5 | Loja Online | Validada em codigo |
+| 6 | Pagamentos | Codigo pronto; aguardando sandbox Mercado Pago |
+| 7 | Fidelidade | Codigo validado |
+| 8 | Financeiro | Codigo validado |
+| 9 | Relatorios | Codigo validado |
+| 10 | Testes | Parcial; cobertura abaixo da meta |
+| 11 | Producao | Bloqueada pela Fase 10 |
+| 12 | Play Store | Bloqueada pela Fase 11 |
+
+## Fase 1 - Auditoria e Limpeza
+
+### Correcoes aplicadas
+
+* Corrigidos tipos inseguros e imports nao usados que bloqueavam `backend npm run lint:check`.
+* Tipados helpers de cookies/refresh token no backend.
+* Tipados validators customizados.
+* Tipados mocks de specs do backend que usavam `any`.
+* Removido import nao utilizado em repository de servicos de profissionais.
+
+### Criterios oficiais
+
+| Criterio | Status |
+| --- | --- |
+| Backend build OK | OK |
+| Web build OK | OK |
+| Flutter analyze sem erros | OK |
+| Flutter test executando | OK |
+
+### Observacoes
+
+* Validacao executada com backend `type-check`, `lint:check`, `build` e `test`.
+* Validacao executada com web `type-check`, `build` e `lint`.
+* Validacao executada com mobile `flutter analyze` e `flutter test`.
+
+## Fase 2 - Seguranca
+
+### Correcoes aplicadas
+
+* Mobile: tokens e dados sensiveis de sessao migrados para `flutter_secure_storage`.
+* Backend: papel `OWNER` adicionado ao Prisma e ao contrato web.
+* Backend: refresh token rotativo preservado e validado.
+* Backend: `RolesGuard` registrado globalmente e coberto por teste unitario.
+* Backend: rate limit especifico aplicado em login, cadastro, cadastro admin, forgot/reset password e refresh.
+* Backend: middleware de logging aplicado globalmente.
+* Backend: `AuditService` criado e eventos de auth registrados sem tokens, senhas ou links sensiveis.
+
+### Validacao
+
+* Backend `prisma:generate`, `type-check`, `lint:check`, `build` e `test`: OK.
+* Web `type-check`, `build` e `lint`: OK.
+* Mobile `flutter analyze` e `flutter test`: OK.
+
+## Fase 3 - Agendamento Completo
+
+### Status inicial
+
+* Cliente backend: agendar, listar historico, reagendar e cancelar com politica.
+* Cliente mobile: agendar, listar historico, reagendar e cancelar conectados ao backend.
+* Profissional/painel web: check-in, iniciar e finalizar atendimento conectados ao backend.
+* Administrador/painel web: fluxo de desistência deve permitir oferecer o horário vago para cliente posterior, gerando mensagem de disponibilidade para antecipar.
+* Administrador/backend: bloqueios e folgas (`TimeOff`) criados, listados e removidos; slots disponiveis respeitam bloqueios.
+
+### Pendente para concluir a fase
+
+* Validar fluxo ponta a ponta em ambiente rodando com banco.
+
+### Validacao
+
+* Backend `type-check`, `lint:check`, `build` e `test`: OK.
+* Web `type-check`, `build` e `lint`: OK.
+* Mobile `flutter analyze` e `flutter test`: OK.
+
+## Fase 4 - Notificacoes
+
+### Status inicial
+
+* Mobile: `firebase_core` e `firebase_messaging` adicionados.
+* Mobile: token FCM registrado no backend após login/cadastro/restauração de sessão quando Firebase estiver configurado.
+* Backend: `DeviceToken` criado no Prisma com migration.
+* Backend: endpoint `POST /notifications/device-token` criado.
+* Backend: eventos de agendamento criado, confirmado e cancelado registram notificação push em fila.
+* Documentação criada em `mobile/docs/FIREBASE_FCM_SETUP.md`.
+
+### Implementado nesta etapa
+
+* Backend: `firebase-admin` integrado para envio real via FCM quando houver credencial.
+* Backend: `@nestjs/schedule` configurado para processar notificações agendadas.
+* Backend: lembretes automáticos de 24h e 1h antes do agendamento.
+* Backend: reagendamento recria lembretes pendentes.
+* Backend: cancelamento remove lembretes pendentes.
+* Backend: tokens FCM inválidos são desativados automaticamente quando o Firebase retorna erro de token.
+* Backend: suporta `FIREBASE_SERVICE_ACCOUNT_JSON` em JSON/base64 e `GOOGLE_APPLICATION_CREDENTIALS`.
+* Mobile Android: plugin `com.google.gms.google-services` preparado de forma condicional.
+* Mobile Android: permissão `POST_NOTIFICATIONS` adicionada para Android 13+.
+* Documentação FCM atualizada com o fluxo Android/backend real.
+
+### Validacao de codigo
+
+* Backend `type-check`, `lint:check`, `build` e `test`: OK.
+* Mobile `flutter analyze` e `flutter test`: OK.
+
+### Pendente para concluir a fase
+
+* Criar projeto Firebase real.
+* Adicionar `mobile/android/app/google-services.json`.
+* Configurar `FIREBASE_SERVICE_ACCOUNT_JSON` ou `GOOGLE_APPLICATION_CREDENTIALS` no backend.
+* Validar push Android em aparelho/emulador.
+
+## Fase 5 - Loja Online
+
+### Observacao de sequencia
+
+* A Fase 4 segue com validacao real de push Android pendente por depender de Firebase externo.
+* Por autorizacao do usuario, a implementacao de codigo da Fase 5 foi continuada sem remover essa pendencia.
+
+### Implementado
+
+* Banco: `ProductFavorite` criado com migration para favoritos de produtos.
+* Backend: `StoreModule` criado com catalogo, carrinho, favoritos, checkout e historico.
+* Backend: checkout cria `Order`, `OrderItem`, `Payment` pendente e `StockMovement`.
+* Backend: estoque e validado antes da compra e baixado no checkout.
+* Backend: endpoint administrativo `GET /store/admin/orders` criado para painel web.
+* Mobile: tela de loja adicionada com produtos, favoritos, carrinho, checkout Pix pendente e pedidos.
+* Mobile: rota `/app/store` ligada ao atalho "Comprar produtos".
+* Web: pagina Lojinha mostra pedidos recentes e metricas de pedidos.
+
+### Validacao
+
+* Backend `prisma:generate`, `type-check`, `lint:check`, `build` e `test`: OK.
+* Web `type-check`, `lint` e `build`: OK.
+* Mobile `flutter analyze` e `flutter test`: OK.
+
+### Pendente operacional
+
+* Aplicar migrations em banco real.
+* Cadastrar produtos reais com estoque e imagens.
+* Testar compra ponta a ponta com backend e banco rodando.
+
+## Fase 6 - Pagamentos
+
+### Implementado
+
+* Backend: SDK oficial `mercadopago` instalado.
+* Backend: variáveis Mercado Pago adicionadas ao `.env.example` e à validação de ambiente.
+* Banco: índice único `Payment(provider, providerReference)` adicionado.
+* Banco: `PaymentWebhookEvent` criado para idempotência de webhooks.
+* Backend: `PaymentsModule` criado com Checkout Pro, webhook, consulta de status, cancelamento e estorno.
+* Backend: webhook Mercado Pago valida `x-signature` com o validador oficial do SDK.
+* Backend: webhook consulta o pagamento no Mercado Pago antes de alterar pedido interno.
+* Backend: checkout da loja agora reserva estoque por 30 minutos e cria preferência Checkout Pro.
+* Backend: pagamento aprovado confirma `Payment=PAID`, `Order=PAID` e consome reserva com movimento `OUT`.
+* Backend: pagamento rejeitado/cancelado/expirado cancela pedido, cancela pagamento e libera reserva com movimento `RELEASE`.
+* Backend: job de reconciliação cancela/libera pagamentos pendentes vencidos quando webhook não chegar.
+* Backend: estorno total/parcial para `OWNER` e `ADMIN`, com motivo, auditoria e reposição opcional de estoque.
+* Mobile: `url_launcher` e `app_links` adicionados.
+* Mobile: checkout abre a URL do Mercado Pago em navegador externo.
+* Mobile: deep link `barbeariadoartur://payments/result` configurado no Android.
+* Mobile: retorno do pagamento consulta `/payments/orders/:orderId/status` e atualiza histórico.
+* Web: painel Lojinha exibe status do pagamento e ação de estorno com valor, motivo e reposição opcional.
+
+### Validacao de codigo
+
+* Backend `prisma:generate`, `type-check`, `lint:check`, `build` e `test`: OK.
+* Backend testes de pagamentos adicionados: aprovação consome reserva; rejeição libera reserva.
+* Web `type-check`, `lint` e `build`: OK.
+* Mobile `flutter analyze` e `flutter test`: OK.
+
+### Pendente externo
+
+* Configurar `MERCADO_PAGO_ACCESS_TOKEN` sandbox.
+* Configurar `MERCADO_PAGO_WEBHOOK_SECRET`.
+* Configurar `MERCADO_PAGO_WEBHOOK_URL` público apontando para `/api/payments/webhooks/mercado-pago`.
+* Testar compra Pix sandbox aprovada.
+* Testar cartão sandbox aprovado e recusado.
+* Confirmar recebimento real do webhook.
+* Confirmar estorno real no Mercado Pago.
+
+## Fase 7 - Fidelidade
+
+### Observacao de sequencia
+
+* A validação sandbox real da Fase 6 ainda depende das credenciais Mercado Pago e webhook público.
+* Por autorização do usuário, a implementação de código da Fase 7 foi continuada sem remover essa pendência externa.
+
+### Implementado
+
+* Banco: nível `DIAMOND` adicionado e `VIP` migrado para `DIAMOND`.
+* Banco: `LoyaltyTransaction.externalKey` criado com unicidade por tenant para impedir crédito duplicado.
+* Backend: `LoyaltyModule` criado com níveis Bronze, Prata, Ouro e Diamante.
+* Backend: carteira do cliente expõe saldo de pontos, cashback, nível atual, benefícios e histórico.
+* Backend: pagamento aprovado credita fidelidade automaticamente de forma idempotente.
+* Backend: resgate de pontos pelo cliente e pelo admin.
+* Backend: ajuste administrativo de pontos/cashback restrito a `OWNER` e `ADMIN`.
+* Backend: resgates e ajustes registram auditoria.
+* Mobile: perfil mostra nível, saldo de pontos, cashback e botão de resgate.
+* Web: página de clientes mostra nível, saldo, cashback e ações de resgate/ajuste.
+
+### Validacao de codigo
+
+* Backend `prisma:generate`, `type-check`, `lint:check`, `build` e `test`: OK.
+* Web `type-check`, `lint` e `build`: OK.
+* Mobile `flutter analyze` e `flutter test`: OK.
+
+### Pendente operacional
+
+* Aplicar migrations em banco real.
+* Definir valores comerciais finais dos benefícios de cada nível com a Barbearia do Artur.
+* Validar ganho de pontos em compra sandbox Mercado Pago após concluir pendências externas da Fase 6.
+
+## Fase 8 - Financeiro
+
+### Implementado
+
+* Backend: `FinanceModule` criado com endpoint `GET /finance/overview`.
+* Backend: financeiro calcula visão diária, semanal, mensal e anual.
+* Backend: receitas consolidadas por atendimentos concluídos, pedidos pagos e entradas manuais.
+* Backend: despesas manuais via `POST /finance/transactions`.
+* Backend: lucro líquido calculado como receitas menos despesas e comissões.
+* Backend: finalização de atendimento registra receita e comissão estimada do profissional de forma idempotente.
+* Backend: lançamentos financeiros registram auditoria.
+* Web: página `/finance` criada no painel administrativo.
+* Web: dashboard financeiro com receitas, despesas, comissões, lucro, composição do caixa e movimentações recentes.
+* Web: lançamento rápido de receita/despesa manual.
+
+### Validacao de codigo
+
+* Backend `type-check`, `lint:check`, `build` e `test`: OK.
+* Web `type-check`, `lint` e `build`: OK.
+* Mobile `flutter analyze` e `flutter test`: OK.
+
+### Pendente operacional
+
+* Conferir regras reais de comissão da Barbearia do Artur.
+* Cadastrar despesas reais recorrentes.
+* Validar caixa diário em banco real com atendimentos finalizados e pedidos pagos.
+
+## Fase 9 - Relatorios
+
+### Implementado
+
+* Backend: relatório consolidado agora inclui produtos mais vendidos.
+* Backend: relatório consolidado agora inclui clientes recorrentes.
+* Backend: taxa de retorno calculada por clientes com duas ou mais visitas recentes.
+* Backend: exportação `GET /reports/export?format=excel`.
+* Backend: exportação `GET /reports/export?format=pdf`.
+* Web: página de relatórios exibe produtos mais vendidos.
+* Web: página de relatórios exibe clientes recorrentes.
+* Web: página de relatórios exibe taxa de retorno.
+* Web: botões de download PDF e Excel adicionados.
+
+### Validacao de codigo
+
+* Backend `type-check`, `lint:check`, `build` e `test`: OK.
+* Web `type-check`, `lint` e `build`: OK.
+
+### Pendente operacional
+
+* Validar exportações com dados reais de produção/homologação.
+* Confirmar formato visual final do PDF com a Barbearia do Artur.
+
+## Fase 10 - Testes
+
+### Implementado
+
+* Web: Jest configurado com `next/jest`.
+* Web: scripts `test` e `test:cov` adicionados.
+* Web: testes de contrato para normalização de clientes, fidelidade e relatórios.
+* E2E: checklist oficial versionado em `TESTES_E2E_FASE_10.md` para cadastro, login, agendamento, compra e pagamento.
+
+### Validacao executada
+
+* Backend `test:cov`: testes OK, cobertura global atual 19,48%.
+* Web `test:cov`: testes OK, cobertura global atual 9,82%.
+* Mobile `flutter test --coverage`: testes OK.
+
+### Pendente para concluir a fase
+
+* Backend precisa subir cobertura para 80%.
+* Web precisa subir cobertura para 70%.
+* Mobile precisa validar percentual de cobertura em LCOV e subir para 70%.
+* Automatizar E2E real quando houver banco de homologação, Mercado Pago sandbox e Firebase configurados.
+* A Fase 11 continua bloqueada pela regra oficial de não avançar antes da validação da fase anterior.

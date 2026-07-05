@@ -1,6 +1,6 @@
-import 'package:salao_da_lu_mobile/features/profile/domain/entities/client_profile.dart';
-import 'package:salao_da_lu_mobile/features/profile/infrastructure/models/client_profile_appointment_model.dart';
-import 'package:salao_da_lu_mobile/features/profile/infrastructure/models/loyalty_activity_model.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/domain/entities/client_profile.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/infrastructure/models/client_profile_appointment_model.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/infrastructure/models/loyalty_activity_model.dart';
 
 class ClientProfileModel {
   const ClientProfileModel({
@@ -11,6 +11,8 @@ class ClientProfileModel {
     required this.loyaltyPoints,
     required this.lifetimeValue,
     required this.pointsBalance,
+    required this.cashbackBalance,
+    required this.loyaltyLevel,
     required this.recentAppointments,
     required this.loyaltyActivities,
     this.favoriteProfessionalName,
@@ -23,6 +25,8 @@ class ClientProfileModel {
   final int loyaltyPoints;
   final double lifetimeValue;
   final int pointsBalance;
+  final double cashbackBalance;
+  final String loyaltyLevel;
   final String? favoriteProfessionalName;
   final List<ClientProfileAppointmentModel> recentAppointments;
   final List<LoyaltyActivityModel> loyaltyActivities;
@@ -42,11 +46,15 @@ class ClientProfileModel {
     return ClientProfileModel(
       id: json['id'] as String? ?? '',
       name: user['name'] as String? ?? 'Cliente',
-      email: user['email'] as String? ?? 'cliente@salaodaluu.app',
+      email: user['email'] as String? ?? 'cliente@barbeariadoartur.app',
       memberSince: _parseDateTime(json['createdAt']),
       loyaltyPoints: (json['loyaltyPoints'] as num?)?.toInt() ?? 0,
       lifetimeValue: double.tryParse('${json['lifetimeValue'] ?? 0}') ?? 0,
       pointsBalance: (loyaltyWallet['pointsBalance'] as num?)?.toInt() ?? 0,
+      cashbackBalance:
+          double.tryParse('${loyaltyWallet['cashbackBalance'] ?? 0}') ?? 0,
+      loyaltyLevel:
+          _displayLevel('${loyaltyWallet['currentLevel'] ?? json['loyaltyLevel'] ?? 'BRONZE'}'),
       favoriteProfessionalName: favoriteProfessionalUser['name'] as String?,
       recentAppointments: appointments
           .whereType<Map>()
@@ -76,6 +84,8 @@ class ClientProfileModel {
       loyaltyPoints: loyaltyPoints,
       lifetimeValue: lifetimeValue,
       pointsBalance: pointsBalance,
+      cashbackBalance: cashbackBalance,
+      loyaltyLevel: loyaltyLevel,
       favoriteProfessionalName: favoriteProfessionalName,
       recentAppointments: recentAppointments
           .map((item) => item.toEntity())
@@ -89,5 +99,19 @@ class ClientProfileModel {
   static DateTime _parseDateTime(Object? value) {
     final parsed = DateTime.tryParse('${value ?? ''}') ?? DateTime.now();
     return parsed.isUtc ? parsed.toLocal() : parsed;
+  }
+
+  static String _displayLevel(String value) {
+    switch (value.toUpperCase()) {
+      case 'SILVER':
+        return 'Prata';
+      case 'GOLD':
+        return 'Ouro';
+      case 'DIAMOND':
+      case 'VIP':
+        return 'Diamante';
+      default:
+        return 'Bronze';
+    }
   }
 }

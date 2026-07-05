@@ -1,5 +1,5 @@
-import 'package:salao_da_lu_mobile/features/profile/domain/entities/client_profile_appointment.dart';
-import 'package:salao_da_lu_mobile/features/profile/domain/entities/loyalty_activity.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/domain/entities/client_profile_appointment.dart';
+import 'package:barbearia_do_artur_mobile/features/profile/domain/entities/loyalty_activity.dart';
 
 class ClientProfile {
   const ClientProfile({
@@ -10,6 +10,8 @@ class ClientProfile {
     required this.loyaltyPoints,
     required this.lifetimeValue,
     required this.pointsBalance,
+    required this.cashbackBalance,
+    required this.loyaltyLevel,
     required this.recentAppointments,
     required this.loyaltyActivities,
     this.favoriteProfessionalName,
@@ -22,6 +24,8 @@ class ClientProfile {
   final int loyaltyPoints;
   final double lifetimeValue;
   final int pointsBalance;
+  final double cashbackBalance;
+  final String loyaltyLevel;
   final String? favoriteProfessionalName;
   final List<ClientProfileAppointment> recentAppointments;
   final List<LoyaltyActivity> loyaltyActivities;

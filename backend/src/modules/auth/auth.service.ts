@@ -4,14 +4,18 @@ import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { TenantsService } from '../tenants/tenants.service';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegisterAdminDto } from './dto/register-admin.dto';
 import { RefreshTokenDto, RefreshTokenResponseDto } from './dto/refresh-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthenticatedUser } from './types/authenticated-user.type';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { Prisma, User, UserRole } from '@prisma/client';
+import type { StringValue } from 'ms';
 import { PrismaService, TenantPrismaClient } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 type AuthResponse = {
   accessToken: string;
@@ -24,10 +28,25 @@ type AuthResponse = {
 
 type SafeUser = Omit<User, 'passwordHash'>;
 
+type PasswordResetPayload = {
+  sub: string;
+  tenantId: string;
+  email: string;
+  purpose: 'password-reset';
+  passwordHashDigest: string;
+};
+
+type RefreshTokenPayload = {
+  sub: string;
+  email?: string;
+  role?: string;
+  tenantId?: string;
+};
+
 @Injectable()
 export class AuthService {
-  private readonly jwtExpiresIn: string | number;
-  private readonly refreshTokenExpiresIn: string | number;
+  private readonly jwtExpiresIn: StringValue | number;
+  private readonly refreshTokenExpiresIn: StringValue | number;
 
   constructor(
     private readonly usersService: UsersService,
@@ -35,9 +54,16 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
   ) {
-    this.jwtExpiresIn = this.configService.get<string | number>('JWT_EXPIRES_IN', '1h');
-    this.refreshTokenExpiresIn = this.configService.get<string | number>('REFRESH_TOKEN_EXPIRES_IN', '7d');
+    this.jwtExpiresIn = this.configService.get<StringValue | number>(
+      'JWT_EXPIRES_IN',
+      '1h' as StringValue,
+    );
+    this.refreshTokenExpiresIn = this.configService.get<StringValue | number>(
+      'REFRESH_TOKEN_EXPIRES_IN',
+      '7d' as StringValue,
+    );
   }
 
   async login(loginDto: LoginDto): Promise<AuthResponse> {
@@ -58,7 +84,9 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
-    return this.createAuthResponse(user);
+    const authResponse = await this.createAuthResponse(user);
+    await this.recordAuthAudit(user.tenantId, user.id, 'AUTH_LOGIN');
+    return authResponse;
   }
 
   async getProfile(authenticatedUser: AuthenticatedUser): Promise<SafeUser> {
@@ -72,12 +100,82 @@ export class AuthService {
 
   async register(registerDto: RegisterDto): Promise<SafeUser> {
     const user = await this.createUser(registerDto, UserRole.CLIENT);
+    await this.recordAuthAudit(user.tenantId, user.id, 'AUTH_REGISTER_CLIENT');
     return this.toSafeUser(user);
   }
 
   async registerAdmin(registerAdminDto: RegisterAdminDto): Promise<AuthResponse> {
-    const user = await this.createUser(registerAdminDto, UserRole.MANAGER);
-    return this.createAuthResponse(user);
+    const user = await this.createUser(registerAdminDto, UserRole.OWNER);
+    const authResponse = await this.createAuthResponse(user);
+    await this.recordAuthAudit(user.tenantId, user.id, 'AUTH_REGISTER_OWNER');
+    return authResponse;
+  }
+
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+    const response = {
+      message:
+        'Se esse email estiver cadastrado, enviaremos um link para trocar a senha em alguns minutos.',
+      resetToken: undefined as string | undefined,
+      resetUrl: undefined as string | undefined,
+    };
+    const tenant = await this.tenantsService.findBySubdomain(
+      this.normalizeTenantSubdomain(forgotPasswordDto.tenantSubdomain),
+    );
+
+    if (!tenant) {
+      return response;
+    }
+
+    const user = await this.usersService.findByEmailAndTenant(forgotPasswordDto.email, tenant.id);
+    if (!user || !user.isActive) {
+      return response;
+    }
+
+    const resetToken = this.createPasswordResetToken(user);
+    const resetUrl = `${this.getWebAppUrl()}/auth/reset-password?token=${encodeURIComponent(resetToken)}`;
+    await this.recordAuthAudit(user.tenantId, user.id, 'AUTH_PASSWORD_RESET_REQUESTED');
+
+    if (this.configService.get<string>('NODE_ENV') !== 'production') {
+      response.resetToken = resetToken;
+      response.resetUrl = resetUrl;
+    }
+
+    // Production email/WhatsApp delivery should consume resetUrl here.
+    return response;
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    let payload: PasswordResetPayload;
+
+    try {
+      payload = this.jwtService.verify<PasswordResetPayload>(resetPasswordDto.token, {
+        secret: this.getPasswordResetSecret(),
+      });
+    } catch {
+      throw new UnauthorizedException('Link inválido ou expirado. Peça um novo link.');
+    }
+
+    if (payload.purpose !== 'password-reset') {
+      throw new UnauthorizedException('Link inválido para troca de senha.');
+    }
+
+    const user = await this.usersService.findByIdAndTenant(payload.sub, payload.tenantId);
+    if (
+      !user.isActive ||
+      user.email !== payload.email ||
+      this.getPasswordHashDigest(user.passwordHash) !== payload.passwordHashDigest
+    ) {
+      throw new UnauthorizedException('Link inválido ou expirado. Peça um novo link.');
+    }
+
+    const passwordHash = await bcrypt.hash(resetPasswordDto.password, 12);
+    await this.usersService.updatePassword(user.id, user.tenantId, passwordHash);
+    await this.recordAuthAudit(user.tenantId, user.id, 'AUTH_PASSWORD_RESET_COMPLETED');
+    await this.logout(user.id);
+
+    return {
+      message: 'Senha atualizada. Entre de novo para continuar cuidando da agenda.',
+    };
   }
 
   private async createUser(
@@ -111,7 +209,7 @@ export class AuthService {
             });
           }
 
-          if (role === UserRole.MANAGER || role === UserRole.ADMIN) {
+          if (role === UserRole.OWNER || role === UserRole.MANAGER || role === UserRole.ADMIN) {
             await transaction.adminProfile.create({
               data: {
                 userId: createdUser.id,
@@ -140,32 +238,28 @@ export class AuthService {
     registerDto: RegisterDto | RegisterAdminDto,
     role: UserRole,
   ): Promise<string> {
-    if (role === UserRole.CLIENT && 'tenantSubdomain' in registerDto && registerDto.tenantSubdomain) {
-      const tenant = await this.tenantsService.findBySubdomain(
-        this.normalizeTenantSubdomain(registerDto.tenantSubdomain),
-      );
-      if (!tenant) {
-        throw new ConflictException('Salão não encontrado.');
-      }
-      return tenant.id;
-    }
-
-    if (role === UserRole.CLIENT && 'tenantId' in registerDto && registerDto.tenantId) {
-      const tenant = await this.tenantsService.findById(registerDto.tenantId);
-      if (!tenant) {
-        throw new ConflictException('Tenant não encontrado.');
-      }
-      return tenant.id;
-    }
-
     if (role === UserRole.CLIENT) {
-      throw new ConflictException(
-        'Informe o codigo do salão existente para concluir o cadastro do cliente.',
+      if ('tenantId' in registerDto && registerDto.tenantId) {
+        const tenant = await this.tenantsService.findById(registerDto.tenantId);
+        if (!tenant) {
+          throw new ConflictException('Barbearia não encontrada.');
+        }
+        return tenant.id;
+      }
+
+      const tenantSubdomain =
+        'tenantSubdomain' in registerDto ? registerDto.tenantSubdomain : undefined;
+      const tenant = await this.tenantsService.findBySubdomain(
+        this.normalizeTenantSubdomain(tenantSubdomain),
       );
+      if (!tenant) {
+        throw new ConflictException('Barbearia do Artur não encontrada.');
+      }
+      return tenant.id;
     }
 
     if (!('organizationName' in registerDto) || !registerDto.organizationName) {
-      throw new BadRequestException('Informe o nome da empresa para criar a conta gestora.');
+      throw new BadRequestException('Informe o nome da barbearia para criar a conta do Artur.');
     }
 
     const subdomain = this.normalizeTenantSubdomain(registerDto.organizationName);
@@ -178,13 +272,47 @@ export class AuthService {
     return tenant.id;
   }
 
-  private normalizeTenantSubdomain(value: string): string {
-    return value
+  private normalizeTenantSubdomain(value?: string | null): string {
+    const fallbackSubdomain =
+      this.configService.get<string>('DEFAULT_TENANT_SUBDOMAIN') ?? 'barbearia-do-artur';
+
+    return (value?.trim() || fallbackSubdomain)
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-zA-Z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .toLowerCase();
+  }
+
+  private createPasswordResetToken(user: User): string {
+    return this.jwtService.sign(
+      {
+        sub: user.id,
+        tenantId: user.tenantId,
+        email: user.email,
+        purpose: 'password-reset',
+        passwordHashDigest: this.getPasswordHashDigest(user.passwordHash),
+      } satisfies PasswordResetPayload,
+      {
+        expiresIn: '20m',
+        secret: this.getPasswordResetSecret(),
+      },
+    );
+  }
+
+  private getPasswordHashDigest(passwordHash: string): string {
+    return crypto.createHash('sha256').update(passwordHash).digest('hex');
+  }
+
+  private getPasswordResetSecret(): string {
+    return this.configService.get<string>('PASSWORD_RESET_SECRET')
+      ?? this.configService.get<string>('JWT_SECRET', 'change_this_password_reset_secret');
+  }
+
+  private getWebAppUrl(): string {
+    return this.configService.get<string>('WEB_APP_URL')
+      ?? this.configService.get<string>('FRONTEND_URL')
+      ?? 'http://localhost:3001';
   }
 
   private isUniqueConstraintError(
@@ -277,7 +405,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token ausente.');
     }
 
-    const payload = this.jwtService.verify(refreshTokenDto.refreshToken, {
+    const payload = this.jwtService.verify<RefreshTokenPayload>(refreshTokenDto.refreshToken, {
       secret: this.configService.get<string>('REFRESH_TOKEN_SECRET', 'change_this_refresh_secret'),
     });
     const userId = payload.sub;
@@ -321,6 +449,7 @@ export class AuthService {
     });
 
     const newRefreshToken = await this.generateRefreshToken(userId);
+    await this.recordAuthAudit(user.tenantId, user.id, 'AUTH_REFRESH_TOKEN_ROTATED');
 
     return {
       accessToken: newAccessToken,
@@ -340,6 +469,22 @@ export class AuthService {
       data: {
         revokedAt: new Date(),
       },
+    });
+
+    const user = await this.usersService.findById(userId);
+    if (user) {
+      await this.recordAuthAudit(user.tenantId, user.id, 'AUTH_LOGOUT');
+    }
+  }
+
+  private async recordAuthAudit(tenantId: string, userId: string, action: string): Promise<void> {
+    await this.auditService.record({
+      tenantId,
+      userId,
+      action,
+      entity: 'AuthSession',
+      entityId: userId,
+      severity: 'INFO',
     });
   }
 }

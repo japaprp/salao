@@ -18,6 +18,7 @@ describe('AuthService', () => {
     findByEmailAndTenant: jest.fn(),
     findByIdAndTenant: jest.fn(),
     findById: jest.fn(),
+    updatePassword: jest.fn(),
   };
 
   const tenantsService = {
@@ -41,10 +42,17 @@ describe('AuthService', () => {
     },
   };
 
+  const auditService = {
+    record: jest.fn(),
+  };
+
   const configValues: Record<string, string> = {
+    NODE_ENV: 'development',
     JWT_EXPIRES_IN: '1h',
     REFRESH_TOKEN_EXPIRES_IN: '7d',
     REFRESH_TOKEN_SECRET: 'refresh-secret-for-tests',
+    PASSWORD_RESET_SECRET: 'password-reset-secret-for-tests',
+    WEB_APP_URL: 'http://localhost:3001',
   };
 
   const configService = {
@@ -61,17 +69,18 @@ describe('AuthService', () => {
       jwtService as never,
       configService,
       prismaService as never,
+      auditService as never,
     );
   });
 
   it('returns access token and refresh token on successful login', async () => {
     tenantsService.findBySubdomain.mockResolvedValue({
       id: 'tenant-1',
-      subdomain: 'salao-da-lu',
+      subdomain: 'barbearia-do-artur',
     });
     usersService.findByEmailAndTenant.mockResolvedValue({
       id: 'user-1',
-      email: 'cliente@salao.com',
+      email: 'cliente@barbeariadoartur.app',
       passwordHash: 'hashed-password',
       name: 'Cliente Demo',
       role: UserRole.CLIENT,
@@ -96,8 +105,8 @@ describe('AuthService', () => {
     mockedBcrypt.compare.mockResolvedValue(true as never);
 
     const result = await service.login({
-      tenantSubdomain: 'Salao da Lu',
-      email: 'cliente@salao.com',
+      tenantSubdomain: 'Barbearia do Artur',
+      email: 'cliente@barbeariadoartur.app',
       password: 'senha-segura',
     });
 
@@ -109,7 +118,7 @@ describe('AuthService', () => {
       refreshExpiresIn: '7d',
       user: {
         id: 'user-1',
-        email: 'cliente@salao.com',
+        email: 'cliente@barbeariadoartur.app',
         name: 'Cliente Demo',
         role: UserRole.CLIENT,
         tenantId: 'tenant-1',
@@ -120,24 +129,26 @@ describe('AuthService', () => {
         deletedAt: null,
       },
     });
-    expect(tenantsService.findBySubdomain).toHaveBeenCalledWith('salao-da-lu');
-    expect(usersService.findByEmailAndTenant).toHaveBeenCalledWith('cliente@salao.com', 'tenant-1');
+    expect(tenantsService.findBySubdomain).toHaveBeenCalledWith('barbearia-do-artur');
+    expect(usersService.findByEmailAndTenant).toHaveBeenCalledWith('cliente@barbeariadoartur.app', 'tenant-1');
+    const refreshTokenPayloadMatcher = expect.objectContaining({
+      userId: 'user-1',
+      token: 'signed-refresh-token',
+    }) as { userId: string; token: string };
+
     expect(prismaService.refreshToken.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: 'user-1',
-        token: 'signed-refresh-token',
-      }),
+      data: refreshTokenPayloadMatcher,
     });
   });
 
   it('throws UnauthorizedException when password is invalid', async () => {
     tenantsService.findBySubdomain.mockResolvedValue({
       id: 'tenant-1',
-      subdomain: 'salao-da-lu',
+      subdomain: 'barbearia-do-artur',
     });
     usersService.findByEmailAndTenant.mockResolvedValue({
       id: 'user-1',
-      email: 'cliente@salao.com',
+      email: 'cliente@barbeariadoartur.app',
       passwordHash: 'hashed-password',
       name: 'Cliente Demo',
       role: UserRole.CLIENT,
@@ -151,8 +162,8 @@ describe('AuthService', () => {
 
     await expect(
       service.login({
-        tenantSubdomain: 'salao-da-lu',
-        email: 'cliente@salao.com',
+        tenantSubdomain: 'barbearia-do-artur',
+        email: 'cliente@barbeariadoartur.app',
         password: 'senha-incorreta',
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
@@ -161,13 +172,13 @@ describe('AuthService', () => {
   it('registers a client against an existing tenant subdomain and creates the client profile', async () => {
     tenantsService.findBySubdomain.mockResolvedValue({
       id: 'tenant-1',
-      subdomain: 'salao-da-lu',
+      subdomain: 'barbearia-do-artur',
     });
     const transaction = {
       user: {
         create: jest.fn().mockResolvedValue({
           id: 'user-1',
-          email: 'cliente@salao.com',
+          email: 'cliente@barbeariadoartur.app',
           passwordHash: 'hashed-password',
           name: 'Cliente Premium',
           role: UserRole.CLIENT,
@@ -191,17 +202,17 @@ describe('AuthService', () => {
     mockedBcrypt.hash.mockResolvedValue('hashed-password' as never);
 
     const result = await service.register({
-      email: 'cliente@salao.com',
+      email: 'cliente@barbeariadoartur.app',
       password: 'senha-segura',
       name: 'Cliente Premium',
-      tenantSubdomain: 'Salao da Lu',
+      tenantSubdomain: 'Barbearia do Artur',
     });
 
-    expect(tenantsService.findBySubdomain).toHaveBeenCalledWith('salao-da-lu');
+    expect(tenantsService.findBySubdomain).toHaveBeenCalledWith('barbearia-do-artur');
     expect(prismaService.withTenant).toHaveBeenCalledWith('tenant-1', expect.any(Function));
     expect(transaction.user.create).toHaveBeenCalledWith({
       data: {
-        email: 'cliente@salao.com',
+        email: 'cliente@barbeariadoartur.app',
         phone: undefined,
         passwordHash: 'hashed-password',
         name: 'Cliente Premium',
@@ -218,23 +229,23 @@ describe('AuthService', () => {
     expect(transaction.adminProfile.create).not.toHaveBeenCalled();
     expect(result).toEqual({
       id: 'user-1',
-      email: 'cliente@salao.com',
+      email: 'cliente@barbeariadoartur.app',
       name: 'Cliente Premium',
       role: UserRole.CLIENT,
       tenantId: 'tenant-1',
     });
   });
 
-  it('registers a manager for a newly created tenant and authenticates the onboarding flow', async () => {
+  it('registers an owner for a newly created tenant and authenticates the onboarding flow', async () => {
     tenantsService.createTenant.mockResolvedValue({ id: 'tenant-new' });
     const transaction = {
       user: {
         create: jest.fn().mockResolvedValue({
           id: 'user-1',
-          email: 'dona@salao.com',
+          email: 'artur@barbeariadoartur.app',
           passwordHash: 'hashed-password',
-          name: 'Dona do Salão',
-          role: UserRole.MANAGER,
+          name: 'Artur',
+          role: UserRole.OWNER,
           tenantId: 'tenant-new',
           phone: null,
           isActive: true,
@@ -271,25 +282,25 @@ describe('AuthService', () => {
     mockedBcrypt.hash.mockResolvedValue('hashed-password' as never);
 
     const result = await service.registerAdmin({
-      email: 'dona@salao.com',
+      email: 'artur@barbeariadoartur.app',
       password: 'senha-segura',
-      name: 'Dona do Salão',
-      organizationName: 'Salão da Lú Premium',
+      name: 'Artur',
+      organizationName: 'Barbearia do Artur Premium',
       locale: 'pt-BR',
     });
 
     expect(tenantsService.createTenant).toHaveBeenCalledWith({
-      name: 'Salão da Lú Premium',
-      subdomain: 'salao-da-lu-premium',
+      name: 'Barbearia do Artur Premium',
+      subdomain: 'barbearia-do-artur-premium',
       locale: 'pt-BR',
     });
     expect(transaction.user.create).toHaveBeenCalledWith({
       data: {
-        email: 'dona@salao.com',
+        email: 'artur@barbeariadoartur.app',
         phone: undefined,
         passwordHash: 'hashed-password',
-        name: 'Dona do Salão',
-        role: UserRole.MANAGER,
+        name: 'Artur',
+        role: UserRole.OWNER,
         tenantId: 'tenant-new',
       },
     });
@@ -308,9 +319,9 @@ describe('AuthService', () => {
       refreshExpiresIn: '7d',
       user: {
         id: 'user-1',
-        email: 'dona@salao.com',
-        name: 'Dona do Salão',
-        role: UserRole.MANAGER,
+        email: 'artur@barbeariadoartur.app',
+        name: 'Artur',
+        role: UserRole.OWNER,
         tenantId: 'tenant-new',
         phone: null,
         isActive: true,
@@ -327,7 +338,7 @@ describe('AuthService', () => {
       user: {
         create: jest.fn().mockResolvedValue({
           id: 'user-1',
-          email: 'cliente@salao.com',
+          email: 'cliente@barbeariadoartur.app',
           passwordHash: 'hashed-password',
           name: 'Cliente Premium',
           role: UserRole.CLIENT,
@@ -351,7 +362,7 @@ describe('AuthService', () => {
     mockedBcrypt.hash.mockResolvedValue('hashed-password' as never);
 
     const result = await service.register({
-      email: 'cliente@salao.com',
+      email: 'cliente@barbeariadoartur.app',
       password: 'senha-segura',
       name: 'Cliente Premium',
       tenantId: 'tenant-1',
@@ -360,27 +371,30 @@ describe('AuthService', () => {
     expect(tenantsService.findById).toHaveBeenCalledWith('tenant-1');
     expect(result).toEqual({
       id: 'user-1',
-      email: 'cliente@salao.com',
+      email: 'cliente@barbeariadoartur.app',
       name: 'Cliente Premium',
       role: UserRole.CLIENT,
       tenantId: 'tenant-1',
     });
   });
 
-  it('rejects registration when tenant resolution data is missing', async () => {
+  it('rejects registration when the default Artur tenant cannot be found', async () => {
+    tenantsService.findBySubdomain.mockResolvedValue(null);
+
     await expect(
       service.register({
-        email: 'cliente@salao.com',
+        email: 'cliente@barbeariadoartur.app',
         password: 'senha-segura',
         name: 'Cliente Premium',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+    expect(tenantsService.findBySubdomain).toHaveBeenCalledWith('barbearia-do-artur');
   });
 
   it('rejects registration when the email already exists', async () => {
     tenantsService.findBySubdomain.mockResolvedValue({
       id: 'tenant-1',
-      subdomain: 'salao-da-lu',
+      subdomain: 'barbearia-do-artur',
     });
     prismaService.withTenant.mockRejectedValue({
       code: 'P2002',
@@ -390,11 +404,112 @@ describe('AuthService', () => {
 
     await expect(
       service.register({
-        tenantSubdomain: 'salao-da-lu',
-        email: 'cliente@salao.com',
+        tenantSubdomain: 'barbearia-do-artur',
+        email: 'cliente@barbeariadoartur.app',
         password: 'senha-segura',
         name: 'Cliente Premium',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('returns a password reset link in development without exposing whether the email exists', async () => {
+    tenantsService.findBySubdomain.mockResolvedValue({
+      id: 'tenant-1',
+      subdomain: 'barbearia-do-artur',
+    });
+    usersService.findByEmailAndTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'cliente@barbeariadoartur.app',
+      passwordHash: 'hashed-password',
+      name: 'Cliente Demo',
+      role: UserRole.CLIENT,
+      tenantId: 'tenant-1',
+      phone: null,
+      isActive: true,
+      createdAt: fixedDate,
+      updatedAt: fixedDate,
+      deletedAt: null,
+    });
+    jwtService.sign.mockReturnValueOnce('reset-token');
+
+    const result = await service.forgotPassword({
+      tenantSubdomain: 'Barbearia do Artur',
+      email: 'cliente@barbeariadoartur.app',
+    });
+
+    expect(result).toEqual({
+      message:
+        'Se esse email estiver cadastrado, enviaremos um link para trocar a senha em alguns minutos.',
+      resetToken: 'reset-token',
+      resetUrl: 'http://localhost:3001/auth/reset-password?token=reset-token',
+    });
+    expect(jwtService.sign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: 'user-1',
+        tenantId: 'tenant-1',
+        email: 'cliente@barbeariadoartur.app',
+        purpose: 'password-reset',
+      }),
+      {
+        expiresIn: '20m',
+        secret: 'password-reset-secret-for-tests',
+      },
+    );
+  });
+
+  it('resets password with a valid reset token and revokes open sessions', async () => {
+    jwtService.verify.mockReturnValueOnce({
+      sub: 'user-1',
+      tenantId: 'tenant-1',
+      email: 'cliente@barbeariadoartur.app',
+      purpose: 'password-reset',
+      passwordHashDigest:
+        'fb59a3d960ec6f3f85771b15cb3174ea44033647599fe0b89690754ea1093c35',
+    });
+    usersService.findByIdAndTenant.mockResolvedValue({
+      id: 'user-1',
+      email: 'cliente@barbeariadoartur.app',
+      passwordHash: 'hashed-password',
+      name: 'Cliente Demo',
+      role: UserRole.CLIENT,
+      tenantId: 'tenant-1',
+      phone: null,
+      isActive: true,
+      createdAt: fixedDate,
+      updatedAt: fixedDate,
+      deletedAt: null,
+    });
+    mockedBcrypt.hash.mockResolvedValue('new-hashed-password' as never);
+    usersService.updatePassword.mockResolvedValue(undefined);
+    prismaService.refreshToken.updateMany.mockResolvedValue({ count: 2 });
+
+    const result = await service.resetPassword({
+      token: 'reset-token',
+      password: 'NovaSenha123!',
+    });
+
+    expect(jwtService.verify).toHaveBeenCalledWith('reset-token', {
+      secret: 'password-reset-secret-for-tests',
+    });
+    expect(usersService.updatePassword).toHaveBeenCalledWith(
+      'user-1',
+      'tenant-1',
+      'new-hashed-password',
+    );
+    const revokedAtMatcher = expect.any(Date) as Date;
+
+    expect(prismaService.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: revokedAtMatcher,
+      },
+    });
+    expect(result).toEqual({
+      message: 'Senha atualizada. Entre de novo para continuar cuidando da agenda.',
+    });
+  });
 });
+

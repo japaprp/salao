@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
 import { AppointmentsService } from './appointments.service';
 
@@ -6,6 +6,8 @@ describe('AppointmentsService', () => {
   const appointmentsRepository = {
     create: jest.fn(),
     findByClientAndTenant: jest.fn(),
+    findByIdAndTenant: jest.fn(),
+    update: jest.fn(),
     findByProfessionalAndDateRange: jest.fn(),
   };
 
@@ -32,6 +34,47 @@ describe('AppointmentsService', () => {
       professionalsService as never,
       servicesService as never,
     );
+  });
+
+  it('rejects extending an appointment into another booking', async () => {
+    const scheduledAt = new Date('2036-05-12T09:00:00');
+    appointmentsRepository.findByIdAndTenant.mockResolvedValue({
+      id: 'appointment-1',
+      professionalId: 'professional-1',
+      scheduledAt,
+      durationMinutes: 30,
+    });
+    appointmentsRepository.findByProfessionalAndDateRange.mockResolvedValue([
+      { id: 'appointment-1', scheduledAt, durationMinutes: 30 },
+      { id: 'appointment-2', scheduledAt: new Date('2036-05-12T10:00:00'), durationMinutes: 30 },
+    ]);
+
+    await expect(service.update('appointment-1', { durationMinutes: 90 }, 'tenant-1'))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(appointmentsRepository.update).not.toHaveBeenCalled();
+
+    await service.update('appointment-1', { durationMinutes: 60 }, 'tenant-1');
+    expect(appointmentsRepository.update).toHaveBeenCalledWith(
+      'appointment-1', 'tenant-1', { durationMinutes: 60 },
+    );
+  });
+
+  it('validates updated relationships within the appointment tenant', async () => {
+    appointmentsRepository.findByIdAndTenant.mockResolvedValue({ id: 'appointment-1' });
+    clientsService.findByIdAndTenant.mockResolvedValueOnce({ id: 'client-1' });
+    professionalsService.findByIdAndTenant.mockResolvedValueOnce({ id: 'professional-1' });
+    servicesService.findByIdAndTenant.mockRejectedValueOnce(new NotFoundException());
+
+    await expect(service.update('appointment-1', {
+      clientId: 'client-1',
+      professionalId: 'professional-1',
+      serviceId: 'service-2',
+    }, 'tenant-1')).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(clientsService.findByIdAndTenant).toHaveBeenCalledWith('client-1', 'tenant-1');
+    expect(professionalsService.findByIdAndTenant).toHaveBeenCalledWith('professional-1', 'tenant-1');
+    expect(servicesService.findByIdAndTenant).toHaveBeenCalledWith('service-2', 'tenant-1');
+    expect(appointmentsRepository.update).not.toHaveBeenCalled();
   });
 
   it('books an appointment for the authenticated client using service defaults', async () => {
